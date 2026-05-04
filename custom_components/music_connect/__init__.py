@@ -56,7 +56,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     add_extra_js_url(hass, js_url)
 
-    async_register_panel(
+    await async_register_panel(
         hass,
         webcomponent_name="music-connect-panel",
         frontend_url_path=PANEL_PATH,
