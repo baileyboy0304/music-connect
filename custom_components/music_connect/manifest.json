@@ -1,0 +1,10 @@
+{
+  "domain": "music_connect",
+  "name": "Music Connect",
+  "version": "0.1.0",
+  "documentation": "https://github.com/example/music-connect",
+  "requirements": [],
+  "dependencies": ["http", "panel_custom"],
+  "config_flow": true,
+  "codeowners": []
+}
