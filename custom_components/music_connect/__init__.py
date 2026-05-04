@@ -13,44 +13,46 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
+    CONF_LASTFM_API_KEY,
     CONF_MASS_TOKEN,
     CONF_MASS_URL,
     DOMAIN,
+    LASTFM_CACHE_TTL_SECONDS,
     PANEL_ICON,
     PANEL_PATH,
     PANEL_TITLE,
 )
+from .lastfm_api import LastFmApiClient
 from .music_assistant_api import MusicAssistantApiClient
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """Set up integration from yaml (unused)."""
     hass.data.setdefault(DOMAIN, {})
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Music Connect from a config entry."""
     session = async_get_clientsession(hass)
     api_client = MusicAssistantApiClient(
         session=session,
         base_url=entry.data[CONF_MASS_URL],
         token=entry.data[CONF_MASS_TOKEN],
     )
+    lastfm_client = LastFmApiClient(
+        session=session,
+        api_key=entry.data[CONF_LASTFM_API_KEY],
+        cache_ttl_seconds=LASTFM_CACHE_TTL_SECONDS,
+    )
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {"api_client": api_client}
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {
+        "api_client": api_client,
+        "lastfm_client": lastfm_client,
+    }
 
     frontend_dir = Path(__file__).parent / "frontend"
     js_url = f"/api/{DOMAIN}/panel.js"
-
     await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                url_path=js_url,
-                path=str(frontend_dir / "panel.js"),
-                cache_headers=False,
-            )
-        ]
+        [StaticPathConfig(url_path=js_url, path=str(frontend_dir / "panel.js"), cache_headers=False)]
     )
     add_extra_js_url(hass, js_url)
 
@@ -67,19 +69,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.http.register_view(MusicConnectPlayersView(hass, entry.entry_id))
     hass.http.register_view(MusicConnectSearchView(hass, entry.entry_id))
-
+    hass.http.register_view(MusicConnectSimilarView(hass, entry.entry_id))
+    hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
     hass.data[DOMAIN].pop(entry.entry_id, None)
     return True
 
 
 class MusicConnectBaseView(HomeAssistantView):
-    """Base class for Music Connect API views."""
-
     requires_auth = True
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
@@ -90,10 +90,12 @@ class MusicConnectBaseView(HomeAssistantView):
     def api_client(self) -> MusicAssistantApiClient:
         return self.hass.data[DOMAIN][self.entry_id]["api_client"]
 
+    @property
+    def lastfm_client(self) -> LastFmApiClient:
+        return self.hass.data[DOMAIN][self.entry_id]["lastfm_client"]
+
 
 class MusicConnectPlayersView(MusicConnectBaseView):
-    """Return Music Assistant players."""
-
     name = "api:music_connect:players"
     url = f"/api/{DOMAIN}/players"
 
@@ -103,8 +105,6 @@ class MusicConnectPlayersView(MusicConnectBaseView):
 
 
 class MusicConnectSearchView(MusicConnectBaseView):
-    """Search Music Assistant music library."""
-
     name = "api:music_connect:search"
     url = f"/api/{DOMAIN}/search"
 
@@ -115,3 +115,29 @@ class MusicConnectSearchView(MusicConnectBaseView):
 
         results = await self.api_client.search(query)
         return json_response({"results": results})
+
+
+class MusicConnectSimilarView(MusicConnectBaseView):
+    name = "api:music_connect:lastfm_similar"
+    url = f"/api/{DOMAIN}/lastfm/similar"
+
+    async def get(self, request: Request) -> Response:
+        artist = request.query.get("artist", "").strip()
+        limit = int(request.query.get("limit", "20"))
+        if not artist:
+            return json_response({"error": "artist is required"}, status=400)
+        artists = await self.lastfm_client.artist_get_similar(artist, limit=limit)
+        return json_response({"artist": artist, "similar": artists})
+
+
+class MusicConnectTopAlbumsView(MusicConnectBaseView):
+    name = "api:music_connect:lastfm_top_albums"
+    url = f"/api/{DOMAIN}/lastfm/top_albums"
+
+    async def get(self, request: Request) -> Response:
+        artist = request.query.get("artist", "").strip()
+        limit = int(request.query.get("limit", "30"))
+        if not artist:
+            return json_response({"error": "artist is required"}, status=400)
+        albums = await self.lastfm_client.artist_get_top_albums(artist, limit=limit)
+        return json_response({"artist": artist, "albums": albums})
