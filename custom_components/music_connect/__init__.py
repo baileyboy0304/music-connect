@@ -6,7 +6,7 @@ from pathlib import Path
 
 from aiohttp.web import Request, Response, json_response
 from homeassistant.components.frontend import add_extra_js_url
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.components.panel_custom import async_register_panel
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -43,7 +43,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     frontend_dir = Path(__file__).parent / "frontend"
     js_url = f"/api/{DOMAIN}/panel.js"
 
-    hass.http.register_static_path(js_url, str(frontend_dir / "panel.js"), cache_headers=False)
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                url_path=js_url,
+                path=str(frontend_dir / "panel.js"),
+                cache_headers=False,
+            )
+        ]
+    )
     add_extra_js_url(hass, js_url)
 
     async_register_panel(
