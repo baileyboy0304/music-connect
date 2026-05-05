@@ -1,4 +1,13 @@
 class MusicConnectPanel extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+  }
+
+  async apiGet(path) {
+    if (!this._hass) throw new Error("Home Assistant connection not ready");
+    return this._hass.callApi("GET", path);
+  }
+
   connectedCallback() {
     this.activeArtist = "";
     this.render();
@@ -35,8 +44,7 @@ class MusicConnectPanel extends HTMLElement {
   async loadPlayers() { /* unchanged behavior */
     const select = this.querySelector("#player-select");
     try {
-      const response = await fetch("/api/music_connect/players", { credentials: "same-origin" });
-      const data = await response.json();
+      const data = await this.apiGet("music_connect/players");
       select.innerHTML = "";
       for (const player of data.players || []) {
         const option = document.createElement("option");
@@ -61,8 +69,7 @@ class MusicConnectPanel extends HTMLElement {
     const errorEl = this.querySelector("#error");
     errorEl.textContent = "";
     try {
-      const res = await fetch(`/api/music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`, { credentials: "same-origin" });
-      const data = await res.json();
+      const data = await this.apiGet(`music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`);
       this.renderGraph(this.activeArtist, data.similar || []);
     } catch (e) {
       errorEl.textContent = "Failed to load Last.fm similar artists.";
