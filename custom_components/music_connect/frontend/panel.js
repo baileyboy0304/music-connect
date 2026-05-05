@@ -54,7 +54,8 @@ class MusicConnectPanel extends HTMLElement {
       }
       if (!select.children.length) select.innerHTML = "<option>No players found</option>";
     } catch (err) {
-      select.innerHTML = "<option>Failed to load players</option>";
+      const message = err?.body?.message || err?.message || "Failed to load players";
+      select.innerHTML = `<option>${message}</option>`;
     }
   }
 
@@ -72,7 +73,7 @@ class MusicConnectPanel extends HTMLElement {
       const data = await this.apiGet(`music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`);
       this.renderGraph(this.activeArtist, data.similar || []);
     } catch (e) {
-      errorEl.textContent = "Failed to load Last.fm similar artists.";
+      errorEl.textContent = e?.body?.message || e?.message || "Failed to load Last.fm similar artists.";
     }
   }
 

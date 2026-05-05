@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aiohttp import ClientError
+from aiohttp import ClientError, ClientResponseError
 from aiohttp.web import Request, Response, json_response
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
@@ -88,6 +88,13 @@ class MusicConnectBaseView(HomeAssistantView):
     async def _safe_execute(self, callback):
         try:
             return await callback()
+        except ClientResponseError as err:
+            if err.status == 401:
+                return json_response(
+                    {"error": "Music Assistant authentication failed. Verify your long-lived Music Assistant token."},
+                    status=401,
+                )
+            return json_response({"error": f"Music Assistant API error: {err}"}, status=502)
         except ClientError as err:
             return json_response({"error": f"Music Assistant API error: {err}"}, status=502)
         except Exception as err:

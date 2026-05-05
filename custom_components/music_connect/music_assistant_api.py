@@ -33,25 +33,6 @@ class MusicAssistantApiClient:
 
         return urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment))
 
-
-    @staticmethod
-    def _normalize_base_url(base_url: str) -> str:
-        raw = base_url.strip()
-        if not raw.startswith(("http://", "https://")):
-            raw = f"http://{raw}"
-
-        parsed = urlsplit(raw)
-
-        netloc = parsed.netloc
-        if parsed.port is None and parsed.hostname:
-            netloc = f"{parsed.hostname}:8095"
-
-        path = parsed.path.rstrip("/")
-        if not path:
-            path = "/api"
-
-        return urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment))
-
     async def players_all(self) -> list[dict]:
         """Fetch all players from Music Assistant."""
         payload = {"command": "players/all"}
