@@ -15,7 +15,7 @@ class MusicConnectPanel extends HTMLElement {
     this.innerHTML = `<style>
       .layout{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:16px}.controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
       .top{display:flex;align-items:center;gap:8px}.menu{display:none}
-      .graph-wrap{border:1px solid var(--divider-color);border-radius:12px;padding:8px}svg{width:100%;height:460px;background:var(--card-background-color)}
+      .graph-wrap{border:1px solid var(--divider-color);border-radius:12px;padding:8px}svg{width:100%;height:460px;background:linear-gradient(180deg, color-mix(in srgb, var(--card-background-color) 92%, #dce2e7), var(--card-background-color))}
       .side{display:flex;flex-direction:column;gap:12px}.cards{display:grid;grid-template-columns:1fr;gap:8px;max-height:520px;overflow:auto}
       .card{position:relative;display:flex;gap:10px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;cursor:pointer}
       .art{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#333}.play{position:absolute;left:40px;top:40px;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer}
@@ -35,18 +35,39 @@ class MusicConnectPanel extends HTMLElement {
     </div>`;
     this.querySelector("#menu-button").addEventListener("click", () => this.toggleMenu());
     this.querySelector("#search-button").addEventListener("click", () => this.searchArtist());
-    this.querySelector("#player-select").addEventListener("change", (e) => { this.selectedPlayer = e.target.value; });
+    this.querySelector("#player-select").addEventListener("change", async (e) => { this.selectedPlayer = e.target.value; await this.apiPost("music_connect/preferences", { default_player: this.selectedPlayer }); localStorage.setItem("music_connect_default_player", this.selectedPlayer); });
   }
 
-  async loadPlayers() { const select = this.querySelector("#player-select"); const data = await this.apiGet("music_connect/players"); select.innerHTML=""; (data.players||[]).forEach((p)=>{const o=document.createElement("option"); o.value=p.player_id||p.id||""; o.textContent=p.display_name||p.name||o.value; select.appendChild(o);}); this.selectedPlayer=select.value; }
+  async loadPlayers() {
+    const select = this.querySelector("#player-select");
+    const [playersData, prefData] = await Promise.all([this.apiGet("music_connect/players"), this.apiGet("music_connect/preferences")]);
+    select.innerHTML = "";
+    (playersData.players || []).forEach((p) => { const o = document.createElement("option"); o.value = p.player_id || p.id || ""; o.textContent = p.display_name || p.name || o.value; select.appendChild(o); });
+    const local = localStorage.getItem("music_connect_default_player");
+    const preferred = prefData.default_player || local;
+    if (preferred && [...select.options].some((o) => o.value === preferred)) select.value = preferred;
+    this.selectedPlayer = select.value;
+    await this.seedFromCurrentPlayer(playersData.players || []);
+  }
+  async seedFromCurrentPlayer(players) {
+    if (this.activeArtist || !this.selectedPlayer) return;
+    const player = players.find((p) => (p.player_id || p.id) === this.selectedPlayer);
+    const artist = player?.current_media?.artist || player?.current_item?.artists?.[0]?.name || player?.elapsed_time_last_updated_item?.artists?.[0]?.name;
+    if (artist) {
+      this.activeArtist = artist;
+      this.querySelector("#artist-search").value = artist;
+      await this.loadGraph();
+      await this.loadMedia();
+    }
+  }
   async searchArtist() { const query=this.querySelector("#artist-search").value.trim(); if(!query)return; this.activeArtist=query; await this.loadGraph(); await this.loadMedia(); }
   async loadGraph() { const data=await this.apiGet(`music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`); this.renderGraph(this.activeArtist,data.similar||[]); }
   async loadMedia() { const data=await this.apiGet(`music_connect/artist_media?artist=${encodeURIComponent(this.activeArtist)}`); this.renderCards("albums",data.albums||[],"album"); this.renderCards("tracks",data.tracks||[],"track"); }
 
   async toggleAlbumDetails(container, albumItem) {
-    const key = `${this.activeArtist}::${albumItem.name}`;
+    const key = albumItem.uri || `${this.activeArtist}::${albumItem.name}`;
     if (this.expandedAlbums.get(key)) { this.expandedAlbums.delete(key); this.renderCards("albums", this._albumsCache || [], "album"); return; }
-    const data = await this.apiGet(`music_connect/album_tracks?artist=${encodeURIComponent(this.activeArtist)}&album=${encodeURIComponent(albumItem.name)}`);
+    const data = await this.apiGet(`music_connect/album_tracks?album_uri=${encodeURIComponent(albumItem.uri || "")}`);
     this.expandedAlbums.set(key, data.tracks || []);
     this.renderCards("albums", this._albumsCache || [], "album");
   }
@@ -67,7 +88,7 @@ class MusicConnectPanel extends HTMLElement {
       card.appendChild(play); wrap.appendChild(card);
 
       if (type === "album") {
-        const key = `${this.activeArtist}::${item.name}`;
+        const key = item.uri || `${this.activeArtist}::${item.name}`;
         const tracks = this.expandedAlbums.get(key);
         if (tracks) {
           const details = document.createElement("div"); details.className = "album-tracks";
@@ -86,6 +107,14 @@ class MusicConnectPanel extends HTMLElement {
 
   async playItem(uri){ if(!this.selectedPlayer) return; await this.apiPost("music_connect/play",{player_id:this.selectedPlayer,media_uri:uri}); }
 
-  renderGraph(centerArtist, similarArtists) { const svg=this.querySelector("#graph"); svg.innerHTML=""; const width=svg.clientWidth||900,height=svg.clientHeight||520,cx=width/2,cy=height/2,ns="http://www.w3.org/2000/svg"; const drawNode=(name,x,y,r,fill)=>{const c=document.createElementNS(ns,"circle"); c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r",r); c.setAttribute("fill",fill); c.style.cursor="pointer"; c.onclick=async()=>{this.activeArtist=name; this.querySelector("#artist-search").value=name; await this.loadGraph(); await this.loadMedia();}; svg.appendChild(c); const t=document.createElementNS(ns,"text"); t.setAttribute("x",x); t.setAttribute("y",y+4); t.setAttribute("fill","var(--primary-text-color)"); t.setAttribute("text-anchor","middle"); t.textContent=name.slice(0,18); svg.appendChild(t);}; drawNode(centerArtist,cx,cy,42,"#5e9cff"); const radius=Math.min(width,height)*0.35; similarArtists.slice(0,20).forEach((artist,i,arr)=>{const angle=(2*Math.PI*i)/arr.length,match=Number.parseFloat(artist.match||"0")||0,distance=radius+(1-match)*90,x=cx+Math.cos(angle)*distance,y=cy+Math.sin(angle)*distance; const line=document.createElementNS(ns,"line"); line.setAttribute("x1",cx); line.setAttribute("y1",cy); line.setAttribute("x2",x); line.setAttribute("y2",y); line.setAttribute("stroke","#7a7a7a"); line.setAttribute("stroke-width",`${1+match*3}`); svg.appendChild(line); drawNode(artist.name||"Unknown",x,y,20+match*12,`hsl(${200-Math.floor(match*120)} 75% 55%)`);}); }
+  renderGraph(centerArtist, similarArtists) {
+    const svg=this.querySelector("#graph"); svg.innerHTML="";
+    const width=svg.clientWidth||900,height=svg.clientHeight||520,cx=width/2,cy=height/2,ns="http://www.w3.org/2000/svg";
+    const wrapText = (name, max) => { const parts = []; let line = ""; for (const w of (name || "").split(" ")) { const n = line ? `${line} ${w}` : w; if (n.length > max && line) { parts.push(line); line = w; } else line = n; } if (line) parts.push(line); return parts.slice(0, 3); };
+    const drawNode=(name,x,y,r,fill,isCenter=false)=>{const c=document.createElementNS(ns,"circle"); c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r",r); c.setAttribute("fill",fill); c.setAttribute("stroke", isCenter ? "#2c2a70" : "#1d4f59"); c.setAttribute("stroke-width", isCenter ? "3" : "1.5"); c.style.cursor="pointer"; c.onclick=async()=>{this.activeArtist=name; this.querySelector("#artist-search").value=name; await this.loadGraph(); await this.loadMedia();}; svg.appendChild(c); const lines=wrapText(name,isCenter?14:12); lines.forEach((line, idx)=>{const t=document.createElementNS(ns,"text"); t.setAttribute("x",x); t.setAttribute("y",y-((lines.length-1)*8)+idx*16+4); t.setAttribute("fill","#fff"); t.setAttribute("font-size", isCenter ? "18" : "13"); t.setAttribute("font-weight", isCenter ? "700" : "600"); t.setAttribute("text-anchor","middle"); t.textContent=line; svg.appendChild(t);});};
+    drawNode(centerArtist,cx,cy,70,"#3c357e",true);
+    const radius=Math.min(width,height)*0.38;
+    similarArtists.slice(0,20).forEach((artist,i,arr)=>{const angle=(2*Math.PI*i)/arr.length,match=Number.parseFloat(artist.match||"0")||0,distance=radius+(1-match)*110,x=cx+Math.cos(angle)*distance,y=cy+Math.sin(angle)*distance; const line=document.createElementNS(ns,"line"); line.setAttribute("x1",cx); line.setAttribute("y1",cy); line.setAttribute("x2",x); line.setAttribute("y2",y); line.setAttribute("stroke",match>0.5?"#4a8f96":"#8b5a5a"); line.setAttribute("stroke-width",`${1+match*2.5}`); svg.appendChild(line); const nodeColor=match>0.66?"#3f7f80":(match>0.33?"#6d3232":"#4b5357"); drawNode(artist.name||"Unknown",x,y,34,nodeColor,false);});
+  }
 }
 customElements.define("music-connect-panel", MusicConnectPanel);
