@@ -73,6 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
         hass.http.register_view(MusicConnectArtistMediaView(hass, entry.entry_id))
         hass.http.register_view(MusicConnectPlayView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectAlbumTracksView(hass, entry.entry_id))
         hass.data[DOMAIN]["panel_registered"] = True
     return True
 
@@ -206,6 +207,33 @@ class MusicConnectArtistMediaView(MusicConnectBaseView):
         return json_response({"artist": artist, "albums": filtered_albums[:30], "tracks": filtered_tracks[:30]})
 
 
+
+
+class MusicConnectAlbumTracksView(MusicConnectBaseView):
+    name = "api:music_connect:album_tracks"
+    url = f"/api/{DOMAIN}/album_tracks"
+
+    async def get(self, request: Request) -> Response:
+        artist = request.query.get("artist", "").strip()
+        album = request.query.get("album", "").strip()
+        if not artist or not album:
+            return json_response({"error": "artist and album are required"}, status=400)
+        return await self._safe_execute(lambda: self._get_album_tracks(artist, album))
+
+    async def _get_album_tracks(self, artist: str, album: str) -> Response:
+        ma = await self.api_client.search(f"{artist} {album}")
+        tracks = ma.get("tracks", []) if isinstance(ma, dict) else []
+        target_album = _normalize_title(album)
+        filtered = []
+        for track in tracks:
+            if not _artist_matches(artist, track.get("artists")):
+                continue
+            track_album = _normalize_title((track.get("album") or {}).get("name", ""))
+            if target_album and track_album and target_album != track_album:
+                continue
+            filtered.append(track)
+        filtered.sort(key=lambda t: ((t.get("track_number") or 999), t.get("name", "")))
+        return json_response({"artist": artist, "album": album, "tracks": filtered[:100]})
 class MusicConnectPlayView(MusicConnectBaseView):
     name = "api:music_connect:play"
     url = f"/api/{DOMAIN}/play"
