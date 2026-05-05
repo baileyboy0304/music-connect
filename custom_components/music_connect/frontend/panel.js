@@ -10,13 +10,16 @@ class MusicConnectPanel extends HTMLElement {
       <style>
         .layout { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 16px; }
         .controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+        .header { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .exit-link { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+        .exit-link:hover { text-decoration: underline; }
         .graph-wrap { border: 1px solid var(--divider-color); border-radius: 12px; padding: 8px; }
         svg { width: 100%; height: 520px; background: var(--card-background-color); border-radius: 8px; }
         .bubble { cursor: pointer; }
         .label { fill: var(--primary-text-color); font-size: 12px; text-anchor: middle; pointer-events: none; }
       </style>
       <div class="layout">
-        <h1>Music Neighbourhood</h1>
+        <div class="header"><h1>Music Neighbourhood</h1><a class="exit-link" href="/lovelace">Back to Overview</a></div>
         <div class="controls">
           <label>Player <select id="player-select"><option>Loading players...</option></select></label>
           <label>Artist <input id="artist-search" type="text" placeholder="Type an artist" /></label>
