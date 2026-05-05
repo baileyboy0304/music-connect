@@ -49,28 +49,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "lastfm_client": lastfm_client,
     }
 
-    frontend_dir = Path(__file__).parent / "frontend"
-    js_url = f"/api/{DOMAIN}/panel.js"
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(url_path=js_url, path=str(frontend_dir / "panel.js"), cache_headers=False)]
-    )
-    add_extra_js_url(hass, js_url)
+    if not hass.data[DOMAIN].get("panel_registered"):
+        frontend_dir = Path(__file__).parent / "frontend"
+        js_url = f"/api/{DOMAIN}/panel.js"
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(url_path=js_url, path=str(frontend_dir / "panel.js"), cache_headers=False)]
+        )
+        add_extra_js_url(hass, js_url)
 
-    await async_register_panel(
-        hass,
-        webcomponent_name="music-connect-panel",
-        frontend_url_path=PANEL_PATH,
-        module_url=js_url,
-        sidebar_title=PANEL_TITLE,
-        sidebar_icon=PANEL_ICON,
-        require_admin=False,
-        config={"entry_id": entry.entry_id},
-    )
+        await async_register_panel(
+            hass,
+            webcomponent_name="music-connect-panel",
+            frontend_url_path=PANEL_PATH,
+            module_url=js_url,
+            sidebar_title=PANEL_TITLE,
+            sidebar_icon=PANEL_ICON,
+            require_admin=False,
+            config={"entry_id": entry.entry_id},
+        )
 
-    hass.http.register_view(MusicConnectPlayersView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectSearchView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectSimilarView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectPlayersView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectSearchView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectSimilarView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
+        hass.data[DOMAIN]["panel_registered"] = True
     return True
 
 
