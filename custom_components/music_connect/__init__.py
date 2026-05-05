@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aiohttp import ClientError, ClientResponseError
 from aiohttp.web import Request, Response, json_response
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
@@ -49,28 +50,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "lastfm_client": lastfm_client,
     }
 
-    frontend_dir = Path(__file__).parent / "frontend"
-    js_url = f"/api/{DOMAIN}/panel.js"
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(url_path=js_url, path=str(frontend_dir / "panel.js"), cache_headers=False)]
-    )
-    add_extra_js_url(hass, js_url)
+    if not hass.data[DOMAIN].get("panel_registered"):
+        frontend_dir = Path(__file__).parent / "frontend"
+        js_url = f"/api/{DOMAIN}/panel.js"
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(url_path=js_url, path=str(frontend_dir / "panel.js"), cache_headers=False)]
+        )
+        add_extra_js_url(hass, js_url)
 
-    async_register_panel(
-        hass,
-        webcomponent_name="music-connect-panel",
-        frontend_url_path=PANEL_PATH,
-        module_url=js_url,
-        sidebar_title=PANEL_TITLE,
-        sidebar_icon=PANEL_ICON,
-        require_admin=False,
-        config={"entry_id": entry.entry_id},
-    )
+        await async_register_panel(
+            hass,
+            webcomponent_name="music-connect-panel",
+            frontend_url_path=PANEL_PATH,
+            module_url=js_url,
+            sidebar_title=PANEL_TITLE,
+            sidebar_icon=PANEL_ICON,
+            require_admin=False,
+            config={"entry_id": entry.entry_id},
+        )
 
-    hass.http.register_view(MusicConnectPlayersView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectSearchView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectSimilarView(hass, entry.entry_id))
-    hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectPlayersView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectSearchView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectSimilarView(hass, entry.entry_id))
+        hass.http.register_view(MusicConnectTopAlbumsView(hass, entry.entry_id))
+        hass.data[DOMAIN]["panel_registered"] = True
     return True
 
 
@@ -81,6 +84,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 class MusicConnectBaseView(HomeAssistantView):
     requires_auth = True
+
+    async def _safe_execute(self, callback):
+        try:
+            return await callback()
+        except ClientResponseError as err:
+            if err.status == 401:
+                return json_response(
+                    {"error": "Music Assistant authentication failed. Verify your long-lived Music Assistant token."},
+                    status=401,
+                )
+            return json_response({"error": f"Music Assistant API error: {err}"}, status=502)
+        except ClientError as err:
+            return json_response({"error": f"Music Assistant API error: {err}"}, status=502)
+        except Exception as err:
+            return json_response({"error": f"Unexpected error: {err}"}, status=500)
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         self.hass = hass
@@ -100,6 +118,9 @@ class MusicConnectPlayersView(MusicConnectBaseView):
     url = f"/api/{DOMAIN}/players"
 
     async def get(self, request: Request) -> Response:
+        return await self._safe_execute(self._get_players)
+
+    async def _get_players(self) -> Response:
         players = await self.api_client.players_all()
         return json_response({"players": players})
 
@@ -113,6 +134,9 @@ class MusicConnectSearchView(MusicConnectBaseView):
         if not query:
             return json_response({"results": {}}, status=400)
 
+        return await self._safe_execute(lambda: self._search(query))
+
+    async def _search(self, query: str) -> Response:
         results = await self.api_client.search(query)
         return json_response({"results": results})
 
@@ -126,6 +150,9 @@ class MusicConnectSimilarView(MusicConnectBaseView):
         limit = int(request.query.get("limit", "20"))
         if not artist:
             return json_response({"error": "artist is required"}, status=400)
+        return await self._safe_execute(lambda: self._get_similar(artist, limit))
+
+    async def _get_similar(self, artist: str, limit: int) -> Response:
         artists = await self.lastfm_client.artist_get_similar(artist, limit=limit)
         return json_response({"artist": artist, "similar": artists})
 
@@ -139,5 +166,8 @@ class MusicConnectTopAlbumsView(MusicConnectBaseView):
         limit = int(request.query.get("limit", "30"))
         if not artist:
             return json_response({"error": "artist is required"}, status=400)
+        return await self._safe_execute(lambda: self._get_top_albums(artist, limit))
+
+    async def _get_top_albums(self, artist: str, limit: int) -> Response:
         albums = await self.lastfm_client.artist_get_top_albums(artist, limit=limit)
         return json_response({"artist": artist, "albums": albums})

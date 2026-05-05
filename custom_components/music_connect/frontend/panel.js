@@ -1,4 +1,13 @@
 class MusicConnectPanel extends HTMLElement {
+  set hass(hass) {
+    this._hass = hass;
+  }
+
+  async apiGet(path) {
+    if (!this._hass) throw new Error("Home Assistant connection not ready");
+    return this._hass.callApi("GET", path);
+  }
+
   connectedCallback() {
     this.activeArtist = "";
     this.render();
@@ -10,13 +19,16 @@ class MusicConnectPanel extends HTMLElement {
       <style>
         .layout { display: grid; grid-template-columns: 1fr; gap: 16px; padding: 16px; }
         .controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+        .header { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .exit-link { color: var(--primary-color); text-decoration: none; font-weight: 600; }
+        .exit-link:hover { text-decoration: underline; }
         .graph-wrap { border: 1px solid var(--divider-color); border-radius: 12px; padding: 8px; }
         svg { width: 100%; height: 520px; background: var(--card-background-color); border-radius: 8px; }
         .bubble { cursor: pointer; }
         .label { fill: var(--primary-text-color); font-size: 12px; text-anchor: middle; pointer-events: none; }
       </style>
       <div class="layout">
-        <h1>Music Neighbourhood</h1>
+        <div class="header"><h1>Music Neighbourhood</h1><a class="exit-link" href="/lovelace">Back to Overview</a></div>
         <div class="controls">
           <label>Player <select id="player-select"><option>Loading players...</option></select></label>
           <label>Artist <input id="artist-search" type="text" placeholder="Type an artist" /></label>
@@ -32,8 +44,7 @@ class MusicConnectPanel extends HTMLElement {
   async loadPlayers() { /* unchanged behavior */
     const select = this.querySelector("#player-select");
     try {
-      const response = await fetch("/api/music_connect/players", { credentials: "same-origin" });
-      const data = await response.json();
+      const data = await this.apiGet("music_connect/players");
       select.innerHTML = "";
       for (const player of data.players || []) {
         const option = document.createElement("option");
@@ -43,7 +54,8 @@ class MusicConnectPanel extends HTMLElement {
       }
       if (!select.children.length) select.innerHTML = "<option>No players found</option>";
     } catch (err) {
-      select.innerHTML = "<option>Failed to load players</option>";
+      const message = err?.body?.message || err?.message || "Failed to load players";
+      select.innerHTML = `<option>${message}</option>`;
     }
   }
 
@@ -58,11 +70,10 @@ class MusicConnectPanel extends HTMLElement {
     const errorEl = this.querySelector("#error");
     errorEl.textContent = "";
     try {
-      const res = await fetch(`/api/music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`, { credentials: "same-origin" });
-      const data = await res.json();
+      const data = await this.apiGet(`music_connect/lastfm/similar?artist=${encodeURIComponent(this.activeArtist)}&limit=20`);
       this.renderGraph(this.activeArtist, data.similar || []);
     } catch (e) {
-      errorEl.textContent = "Failed to load Last.fm similar artists.";
+      errorEl.textContent = e?.body?.message || e?.message || "Failed to load Last.fm similar artists.";
     }
   }
 
