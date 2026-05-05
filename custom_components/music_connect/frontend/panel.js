@@ -16,6 +16,7 @@ class MusicConnectPanel extends HTMLElement {
       .layout{display:grid;grid-template-columns:2fr 1fr;gap:16px;padding:16px}.controls{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
       .top{display:flex;align-items:center;gap:8px}.menu{display:none}
       .graph-wrap{border:1px solid var(--divider-color);border-radius:12px;padding:8px}svg{width:100%;height:460px;background:linear-gradient(180deg, color-mix(in srgb, var(--card-background-color) 92%, #dce2e7), var(--card-background-color))}
+      .graph-text{pointer-events:none}
       .side{display:flex;flex-direction:column;gap:12px}.cards{display:grid;grid-template-columns:1fr;gap:8px;max-height:520px;overflow:auto}
       .card{position:relative;display:flex;gap:10px;padding:8px;border:1px solid var(--divider-color);border-radius:10px;cursor:pointer}
       .art{width:56px;height:56px;border-radius:6px;object-fit:cover;background:#333}.play{position:absolute;left:40px;top:40px;border:none;border-radius:50%;width:24px;height:24px;cursor:pointer}
@@ -110,11 +111,17 @@ class MusicConnectPanel extends HTMLElement {
   renderGraph(centerArtist, similarArtists) {
     const svg=this.querySelector("#graph"); svg.innerHTML="";
     const width=svg.clientWidth||900,height=svg.clientHeight||520,cx=width/2,cy=height/2,ns="http://www.w3.org/2000/svg";
+    const linesGroup = document.createElementNS(ns, "g");
+    const nodesGroup = document.createElementNS(ns, "g");
+    const textGroup = document.createElementNS(ns, "g");
+    svg.appendChild(linesGroup); svg.appendChild(nodesGroup); svg.appendChild(textGroup);
     const wrapText = (name, max) => { const parts = []; let line = ""; for (const w of (name || "").split(" ")) { const n = line ? `${line} ${w}` : w; if (n.length > max && line) { parts.push(line); line = w; } else line = n; } if (line) parts.push(line); return parts.slice(0, 3); };
-    const drawNode=(name,x,y,r,fill,isCenter=false)=>{const c=document.createElementNS(ns,"circle"); c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r",r); c.setAttribute("fill",fill); c.setAttribute("stroke", isCenter ? "#2c2a70" : "#1d4f59"); c.setAttribute("stroke-width", isCenter ? "3" : "1.5"); c.style.cursor="pointer"; c.onclick=async()=>{this.activeArtist=name; this.querySelector("#artist-search").value=name; await this.loadGraph(); await this.loadMedia();}; svg.appendChild(c); const lines=wrapText(name,isCenter?14:12); lines.forEach((line, idx)=>{const t=document.createElementNS(ns,"text"); t.setAttribute("x",x); t.setAttribute("y",y-((lines.length-1)*8)+idx*16+4); t.setAttribute("fill","#fff"); t.setAttribute("font-size", isCenter ? "18" : "13"); t.setAttribute("font-weight", isCenter ? "700" : "600"); t.setAttribute("text-anchor","middle"); t.textContent=line; svg.appendChild(t);});};
-    drawNode(centerArtist,cx,cy,70,"#3c357e",true);
+    const drawNode=(name,x,y,r,fill,isCenter=false)=>{const c=document.createElementNS(ns,"circle"); c.setAttribute("cx",x); c.setAttribute("cy",y); c.setAttribute("r",r); c.setAttribute("fill",fill); c.setAttribute("stroke", isCenter ? "#2c2a70" : "#1d4f59"); c.setAttribute("stroke-width", isCenter ? "3" : "1.5"); c.style.cursor="pointer"; c.onclick=async()=>{this.activeArtist=name; this.querySelector("#artist-search").value=name; await this.loadGraph(); await this.loadMedia();}; nodesGroup.appendChild(c); const lines=wrapText(name,isCenter?14:12); lines.forEach((line, idx)=>{const t=document.createElementNS(ns,"text"); t.setAttribute("x",x); t.setAttribute("y",y-((lines.length-1)*8)+idx*16+4); t.setAttribute("fill","#fff"); t.setAttribute("font-size", isCenter ? "18" : "13"); t.setAttribute("font-weight", isCenter ? "700" : "600"); t.setAttribute("text-anchor","middle"); t.setAttribute("class", "graph-text"); t.textContent=line; textGroup.appendChild(t);});};
     const radius=Math.min(width,height)*0.38;
-    similarArtists.slice(0,20).forEach((artist,i,arr)=>{const angle=(2*Math.PI*i)/arr.length,match=Number.parseFloat(artist.match||"0")||0,distance=radius+(1-match)*110,x=cx+Math.cos(angle)*distance,y=cy+Math.sin(angle)*distance; const line=document.createElementNS(ns,"line"); line.setAttribute("x1",cx); line.setAttribute("y1",cy); line.setAttribute("x2",x); line.setAttribute("y2",y); line.setAttribute("stroke",match>0.5?"#4a8f96":"#8b5a5a"); line.setAttribute("stroke-width",`${1+match*2.5}`); svg.appendChild(line); const nodeColor=match>0.66?"#3f7f80":(match>0.33?"#6d3232":"#4b5357"); drawNode(artist.name||"Unknown",x,y,34,nodeColor,false);});
+    const nodeData = similarArtists.slice(0,20).map((artist,i,arr)=>{const angle=(2*Math.PI*i)/arr.length,match=Number.parseFloat(artist.match||"0")||0,distance=radius+(1-match)*110,x=cx+Math.cos(angle)*distance,y=cy+Math.sin(angle)*distance; return {artist, match, x, y};});
+    nodeData.forEach(({match,x,y})=>{const line=document.createElementNS(ns,"line"); line.setAttribute("x1",cx); line.setAttribute("y1",cy); line.setAttribute("x2",x); line.setAttribute("y2",y); line.setAttribute("stroke",match>0.5?"#4a8f96":"#8b5a5a"); line.setAttribute("stroke-width",`${1+match*2.5}`); linesGroup.appendChild(line);});
+    drawNode(centerArtist,cx,cy,70,"#3c357e",true);
+    nodeData.forEach(({artist,match,x,y})=>{const nodeColor=match>0.66?"#3f7f80":(match>0.33?"#6d3232":"#4b5357"); drawNode(artist.name||"Unknown",x,y,34,nodeColor,false);});
   }
 }
 customElements.define("music-connect-panel", MusicConnectPanel);
