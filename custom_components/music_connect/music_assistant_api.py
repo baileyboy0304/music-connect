@@ -22,11 +22,16 @@ class MusicAssistantApiClient:
             raw = f"http://{raw}"
 
         parsed = urlsplit(raw)
+
+        netloc = parsed.netloc
+        if parsed.port is None and parsed.hostname:
+            netloc = f"{parsed.hostname}:8095"
+
         path = parsed.path.rstrip("/")
         if not path:
             path = "/api"
 
-        return urlunsplit((parsed.scheme, parsed.netloc, path, parsed.query, parsed.fragment))
+        return urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment))
 
     async def players_all(self) -> list[dict]:
         """Fetch all players from Music Assistant."""

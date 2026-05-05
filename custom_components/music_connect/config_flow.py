@@ -23,6 +23,10 @@ class MusicConnectConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 mass_url = f"http://{mass_url}"
 
             parsed = urlsplit(mass_url)
+            if parsed.netloc and parsed.port is None and parsed.hostname:
+                mass_url = mass_url.replace(parsed.netloc, f"{parsed.hostname}:8095", 1)
+                parsed = urlsplit(mass_url)
+
             if not parsed.netloc:
                 errors[CONF_MASS_URL] = "invalid_url"
             else:
