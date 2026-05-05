@@ -59,6 +59,14 @@ class MusicAssistantApiClient:
         data = await self._post_command(payload)
         return data if isinstance(data, dict) else {"result": data}
 
+    async def album_tracks(self, album_uri: str) -> list[dict]:
+        payload = {
+            "command": "music/album/tracks",
+            "args": {"album_uri": album_uri},
+        }
+        data = await self._post_command(payload)
+        return data if isinstance(data, list) else []
+
     async def _post_command(self, payload: dict) -> object:
         headers = {
             "Authorization": f"Bearer {self._token}",
