@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from aiohttp import ClientSession
 from urllib.parse import urlsplit, urlunsplit
+
+from aiohttp import ClientSession
 
 
 class MusicAssistantApiClient:
@@ -14,7 +15,6 @@ class MusicAssistantApiClient:
         self._base_url = self._normalize_base_url(base_url)
         self._token = token.strip()
 
-
     @staticmethod
     def _normalize_base_url(base_url: str) -> str:
         raw = base_url.strip()
@@ -22,7 +22,6 @@ class MusicAssistantApiClient:
             raw = f"http://{raw}"
 
         parsed = urlsplit(raw)
-
         netloc = parsed.netloc
         if parsed.port is None and parsed.hostname:
             netloc = f"{parsed.hostname}:8095"
@@ -34,15 +33,10 @@ class MusicAssistantApiClient:
         return urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment))
 
     async def players_all(self) -> list[dict]:
-        """Fetch all players from Music Assistant."""
-        payload = {"command": "players/all"}
-        data = await self._post_command(payload)
-        if isinstance(data, list):
-            return data
-        return []
+        data = await self._post_command({"command": "players/all"})
+        return data if isinstance(data, list) else []
 
     async def search(self, search_query: str) -> dict:
-        """Search Music Assistant library."""
         payload = {
             "command": "music/search",
             "args": {
@@ -52,9 +46,18 @@ class MusicAssistantApiClient:
             },
         }
         data = await self._post_command(payload)
-        if isinstance(data, dict):
-            return data
-        return {"result": data}
+        return data if isinstance(data, dict) else {"result": data}
+
+    async def play_media(self, player_id: str, media_uri: str) -> dict:
+        payload = {
+            "command": "player_queues/play_media",
+            "args": {
+                "queue_id": player_id,
+                "media": [media_uri],
+            },
+        }
+        data = await self._post_command(payload)
+        return data if isinstance(data, dict) else {"result": data}
 
     async def _post_command(self, payload: dict) -> object:
         headers = {
