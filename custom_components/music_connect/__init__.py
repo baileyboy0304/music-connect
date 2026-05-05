@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from aiohttp import ClientError
 from aiohttp.web import Request, Response, json_response
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import HomeAssistantView, StaticPathConfig
@@ -84,6 +85,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class MusicConnectBaseView(HomeAssistantView):
     requires_auth = True
 
+    async def _safe_execute(self, callback):
+        try:
+            return await callback()
+        except ClientError as err:
+            return json_response({"error": f"Music Assistant API error: {err}"}, status=502)
+        except Exception as err:
+            return json_response({"error": f"Unexpected error: {err}"}, status=500)
+
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -102,6 +111,9 @@ class MusicConnectPlayersView(MusicConnectBaseView):
     url = f"/api/{DOMAIN}/players"
 
     async def get(self, request: Request) -> Response:
+        return await self._safe_execute(self._get_players)
+
+    async def _get_players(self) -> Response:
         players = await self.api_client.players_all()
         return json_response({"players": players})
 
@@ -115,6 +127,9 @@ class MusicConnectSearchView(MusicConnectBaseView):
         if not query:
             return json_response({"results": {}}, status=400)
 
+        return await self._safe_execute(lambda: self._search(query))
+
+    async def _search(self, query: str) -> Response:
         results = await self.api_client.search(query)
         return json_response({"results": results})
 
@@ -128,6 +143,9 @@ class MusicConnectSimilarView(MusicConnectBaseView):
         limit = int(request.query.get("limit", "20"))
         if not artist:
             return json_response({"error": "artist is required"}, status=400)
+        return await self._safe_execute(lambda: self._get_similar(artist, limit))
+
+    async def _get_similar(self, artist: str, limit: int) -> Response:
         artists = await self.lastfm_client.artist_get_similar(artist, limit=limit)
         return json_response({"artist": artist, "similar": artists})
 
@@ -141,5 +159,8 @@ class MusicConnectTopAlbumsView(MusicConnectBaseView):
         limit = int(request.query.get("limit", "30"))
         if not artist:
             return json_response({"error": "artist is required"}, status=400)
+        return await self._safe_execute(lambda: self._get_top_albums(artist, limit))
+
+    async def _get_top_albums(self, artist: str, limit: int) -> Response:
         albums = await self.lastfm_client.artist_get_top_albums(artist, limit=limit)
         return json_response({"artist": artist, "albums": albums})

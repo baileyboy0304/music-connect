@@ -12,7 +12,26 @@ class MusicAssistantApiClient:
     def __init__(self, session: ClientSession, base_url: str, token: str) -> None:
         self._session = session
         self._base_url = self._normalize_base_url(base_url)
-        self._token = token
+        self._token = token.strip()
+
+
+    @staticmethod
+    def _normalize_base_url(base_url: str) -> str:
+        raw = base_url.strip()
+        if not raw.startswith(("http://", "https://")):
+            raw = f"http://{raw}"
+
+        parsed = urlsplit(raw)
+
+        netloc = parsed.netloc
+        if parsed.port is None and parsed.hostname:
+            netloc = f"{parsed.hostname}:8095"
+
+        path = parsed.path.rstrip("/")
+        if not path:
+            path = "/api"
+
+        return urlunsplit((parsed.scheme, netloc, path, parsed.query, parsed.fragment))
 
 
     @staticmethod
