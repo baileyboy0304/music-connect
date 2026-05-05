@@ -5,6 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientSession
+from aiohttp.client_exceptions import ClientResponseError
 
 
 class MusicAssistantApiClient:
@@ -58,6 +59,30 @@ class MusicAssistantApiClient:
         }
         data = await self._post_command(payload)
         return data if isinstance(data, dict) else {"result": data}
+
+    async def album_tracks(self, album_uri: str) -> list[dict]:
+        attempts = [
+            {"command": "music/album/tracks", "args": {"album_uri": album_uri}},
+            {"command": "music/albums/tracks", "args": {"album_uri": album_uri}},
+            {"command": "music/album/tracks", "args": {"uri": album_uri}},
+            {"command": "music/albums/tracks", "args": {"uri": album_uri}},
+        ]
+        last_error: Exception | None = None
+        for payload in attempts:
+            try:
+                data = await self._post_command(payload)
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict):
+                    tracks = data.get("tracks")
+                    if isinstance(tracks, list):
+                        return tracks
+            except ClientResponseError as err:
+                last_error = err
+                continue
+        if last_error:
+            raise last_error
+        return []
 
     async def _post_command(self, payload: dict) -> object:
         headers = {
